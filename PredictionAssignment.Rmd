@@ -1,0 +1,106 @@
+---
+title: "Prediction Assignment"
+author: "Kara Schimmelfing"
+date: "1/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+The goal of this analysis is to analyze the quality/correctness of barbell lifts using accelerometer data from the belt, forearm, arm and dumbbell of 6 participants. The training data for this project are available here:https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv The 5 possible categories of quality/correctness are: 
+A: exactly according to the specification
+B: throwing the elbows to the front
+C: lifting the dumbbell only halfway
+D: lowering the dumbbell only halfway
+E: throwing the hips to the front
+
+##Analysis
+
+```{r loading}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+training$classe <- as.factor(training$classe) 
+```
+
+Now the libraries you need are loaded and the data is in your local memory. 
+
+#Cleaning the Data
+After looking at the data (omitted here for length) there are several columns that have mostly NA values, we will remove those as well as variables that have very low variation. 
+
+```{r cleaning}
+#clean training
+NAindex <- apply(training,2,function(x) {sum(is.na(x))}) 
+training <- training[,which(NAindex == 0)]
+NAindex <- apply(testing,2,function(x) {sum(is.na(x))}) 
+testing<- testing[,which(NAindex == 0)]
+
+v <- which(lapply(training, class) %in% "numeric")
+
+preObj <-preProcess(training[,v],method=c('knnImpute', 'center', 'scale'))
+TrainDataClean <- predict(preObj, training[,v])
+TrainDataClean$classe <- training$classe
+
+ValidateDataClean <-predict(preObj,testing[,v])
+
+
+
+#test for variation
+NZV <- nearZeroVar(TrainDataClean)
+NZV
+```
+Note there was sufficient variation in all columns. 
+
+
+#Data Partitioning
+
+```{r partition}
+set.seed(23456) 
+inTrain <- createDataPartition(TrainDataClean$classe, p = 0.7, list = FALSE)
+TrainData <- TrainDataClean[inTrain, ]
+TestData <- TrainDataClean[-inTrain, ]
+dim(TrainData)
+```
+
+# Decision Tree
+```{r DT}
+
+modFitA1 <- train(classe~., data=TrainData, method="rpart")
+fancyRpartPlot(modFitA1$finalModel)
+```
+Prediction and testing
+```{r DT2}
+predictionsA1 <- predict(modFitA1, newdata=TestData )
+confusionMatrix(table(predictionsA1, TestData$classe))
+```
+# Random Forest
+Prediction and Testing
+```{r RF}
+
+RF_Model <-randomForest(classe ~. , data=TrainData)
+predictionsB1 <- predict(RF_Model, TestData)
+confusionMatrix(predictionsB1, as.factor(TestData$classe))
+```
+Better results then previous Decision Tree
+
+#Predictions on the verification data
+We are using Random Forest because it gave us the best result. 
+
+```{r FinalTest}
+Prediction_Test <- predict(RF_Model,newdata=ValidateDataClean)
+Prediction_Test
+
+```
+
